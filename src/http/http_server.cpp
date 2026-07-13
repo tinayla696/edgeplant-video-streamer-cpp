@@ -255,6 +255,7 @@ std::string BuildWebUiPage() {
         const customPipelineEl = document.getElementById('customPipeline');
         let lastStatus = null;
         let hlsInstance = null;
+        let hlsRetryTimer = null;
 
         function activeMode() {
             return modeRadios.find(r => r.checked)?.value || 'simple';
@@ -269,6 +270,13 @@ std::string BuildWebUiPage() {
         function showMessage(text, cls) {
             msgEl.textContent = text;
             msgEl.className = 'msg ' + (cls || '');
+        }
+
+        function clearHlsRetryTimer() {
+            if (hlsRetryTimer) {
+                clearTimeout(hlsRetryTimer);
+                hlsRetryTimer = null;
+            }
         }
 
         function hlsCommandFromStatus(s) {
@@ -386,6 +394,7 @@ std::string BuildWebUiPage() {
 
         async function loadHlsPreview() {
             const hlsUrl = '/hls/stream.m3u8?_t=' + Date.now();
+            clearHlsRetryTimer();
             hlsStateEl.textContent = '状態: 読み込み中...';
 
             if (lastStatus && lastStatus.mode === 'advanced') {
@@ -405,11 +414,33 @@ std::string BuildWebUiPage() {
                     hlsVideoEl.play().catch(function () {});
                 });
                 hlsInstance.on(window.Hls.Events.ERROR, function (_event, data) {
-                    if (data && data.fatal && hlsInstance) {
+                    const detail = data && data.details ? data.details : 'unknown';
+                    const fatal = data && data.fatal;
+                    const errType = data && data.type;
+
+                    if (fatal && hlsInstance) {
+                        // Retry loading on transient network failures common in live HLS.
+                        if (errType === window.Hls.ErrorTypes.NETWORK_ERROR) {
+                            hlsStateEl.textContent = '状態: HLS再接続中 (' + detail + ')';
+                            clearHlsRetryTimer();
+                            hlsRetryTimer = setTimeout(function () {
+                                if (hlsInstance) {
+                                    hlsInstance.startLoad();
+                                }
+                            }, 1000);
+                            return;
+                        }
+
+                        // Try to recover decoder-related failures without full teardown.
+                        if (errType === window.Hls.ErrorTypes.MEDIA_ERROR) {
+                            hlsStateEl.textContent = '状態: HLS復旧中 (' + detail + ')';
+                            hlsInstance.recoverMediaError();
+                            return;
+                        }
+
                         hlsInstance.destroy();
                         hlsInstance = null;
                     }
-                    const detail = data && data.details ? data.details : 'unknown';
                     hlsStateEl.textContent = '状態: HLS読み込み失敗 (' + detail + ')';
                 });
                 return;

@@ -213,6 +213,62 @@ make
 
 ```
 
+### 1.1 実行確認（WSL / 実カメラ + WebUI HLSプレビュー）
+
+1. カメラ権限を確認（WSLで `/dev/video0` を使う場合）
+
+```bash
+id
+ls -l /dev/video0
+# groups に video が無い場合
+sudo usermod -aG video $USER
+# 反映後の新しいシェルで実行するか、暫定で以下を使用
+sg video -c 'id'
+```
+
+2. アプリ起動（cameraアクセスが必要な場合は `sg video` で起動）
+
+```bash
+pkill -f edgeplant-video-streamer-cpp || true
+sg video -c 'nohup ./build/edgeplant-video-streamer-cpp >/tmp/edgeplant_app.log 2>&1 &'
+curl -s http://127.0.0.1:8080/api/v1/status
+```
+
+3. 実カメラへ切り替え（Simple Mode）
+
+```bash
+curl -s -X POST http://127.0.0.1:8080/api/v1/config \
+  -H 'Content-Type: application/json' \
+  -d '{"mode":"simple","use_test_source":false,"device":"/dev/video0","codec":"H264","target_ip":"127.0.0.1","target_port":5004}'
+curl -s http://127.0.0.1:8080/api/v1/status
+```
+
+4. WebUI内HLSプレビュー用ブリッジを別ターミナルで起動
+
+```bash
+mkdir -p /tmp/edgeplant_hls
+gst-launch-1.0 -q \
+  udpsrc port=5004 caps="application/x-rtp,media=video,encoding-name=H264,payload=96,clock-rate=90000" ! \
+  rtph264depay ! h264parse config-interval=1 ! mpegtsmux ! \
+  hlssink max-files=10 playlist-length=5 target-duration=1 \
+  playlist-location=/tmp/edgeplant_hls/stream.m3u8 \
+  location=/tmp/edgeplant_hls/seg_%03d.ts
+```
+
+5. HLS生成とHTTP配信を確認
+
+```bash
+ls -la /tmp/edgeplant_hls
+curl -i "http://127.0.0.1:8080/hls/stream.m3u8?_t=$(date +%s)"
+```
+
+6. 終了時のクリーンアップ
+
+```bash
+pkill -f "gst-launch-1.0.*hlssink" || true
+pkill -f edgeplant-video-streamer-cpp || true
+```
+
 ### 2. Dockerコンテナによる実機デプロイ・運用
 
 ホストOSのNVIDIAコンテナランタイムを介してGPUエンコーダーへアクセスするため、`runtime: nvidia` の指定および対象カメラデバイス（`/dev/video0`）のバインドを行います。WebUI用のポート `8080` をホスト空間と共有して運用します。
