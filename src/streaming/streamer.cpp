@@ -139,18 +139,14 @@ std::string Streamer::BuildSimplePipeline(bool use_test_source,
         ss << "videotestsrc is-live=true pattern=ball "
            << "! video/x-raw,format=NV12,width=1280,height=720,framerate=30/1 ";
     } else {
+          // decodebin allows both raw and MJPEG-capable USB cameras to negotiate.
         ss << "v4l2src device=" << device << " do-timestamp=true "
-           << "! video/x-raw,width=1280,height=720,framerate=30/1 ";
+              << "! decodebin ";
     }
 
     if (use_jetson_encoder) {
-        if (!use_test_source) {
-            ss << "! nvvidconv "
-               << "! video/x-raw(memory:NVMM),format=NV12,width=1280,height=720,framerate=30/1 ";
-        } else {
-            ss << "! nvvidconv "
-               << "! video/x-raw(memory:NVMM),format=NV12 ";
-        }
+        ss << "! nvvidconv "
+           << "! video/x-raw(memory:NVMM),format=NV12,width=1280,height=720,framerate=30/1 ";
 
         if (use_h265) {
             ss << "! nvv4l2h265enc bitrate=4000000 insert-sps-pps=true iframeinterval=30 "
@@ -162,7 +158,10 @@ std::string Streamer::BuildSimplePipeline(bool use_test_source,
                << "! rtph264pay pt=96 ";
         }
     } else {
-        ss << "! videoconvert ";
+        ss << "! videoconvert "
+           << "! videoscale "
+           << "! videorate "
+           << "! video/x-raw,width=1280,height=720,framerate=30/1 ";
         if (use_h265) {
             ss << "! x265enc tune=zerolatency bitrate=4000 key-int-max=30 "
                << "! h265parse config-interval=1 "
