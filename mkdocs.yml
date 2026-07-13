@@ -1,5 +1,5 @@
-site_name: <Application Name>
-site_description: <Application Description>
+site_name: edgeplant-video-streamer-cpp
+site_description: EDGEPLANT T1 / WSL 向け低遅延映像ストリーマーのプロジェクトドキュメント
 # repo_name: <Repository Name>
 # repo_url: <Repository Link>
 
@@ -70,3 +70,9 @@ extra_javascript:
 # ナビゲーションメニューの設定
 nav:
   - Home: index.md
+  - Implementation Log: implementation_log.md
+  - Architecture: architecture.md
+  - API Reference: api.md
+  - Development (Windows11 + WSL): development_wsl.md
+  - Test Plan: testing.md
+  - Deployment (Jetson): deployment_jetson.md
