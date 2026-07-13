@@ -101,8 +101,8 @@ graph TD
     HttpServer -->|Mutexロック獲得・設定書き換え| Mtx
     Mtx --> Config
     
-    HttpServer -->|RestartStreamer() トリガー| Main
-    Main -->|Stop() -> パラメータ更新 -> Start()| GstCore
+    HttpServer -->|"RestartStreamer() トリガー"| Main
+    Main -->|"Stop() -> パラメータ更新 -> Start()"| GstCore
     
     V4L2 -.->|REQ-01: 1280x720@30p| GstCore
     GstCore -->|REQ-03: udpsink sync=false| Network
