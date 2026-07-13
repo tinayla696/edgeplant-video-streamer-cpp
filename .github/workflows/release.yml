@@ -1,0 +1,86 @@
+name: Video Streamer Build and Release
+
+run-name: "Release binaries / ${{ github.ref_name }} / ${{ github.sha }}"
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Cross-container build and publish release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 1. ARM64コンテナビルド用にQEMU仮想化をセットアップ
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 2. Go側と共通の命名規則でリリース用メタデータを準備
+      - name: Prepare release metadata
+        id: meta
+        run: |
+          echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "tag_name=main-build-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      # 3. Docker BuildxのLocalエクスポート機能を用い、コンテナ内から各バイナリを抽出
+      - name: Cross-container Build (amd64 & arm64)
+        run: |
+          mkdir -p ./dist/raw_amd64 ./dist/raw_arm64 ./dist/artifacts
+          
+          # [linux/amd64]: builderステージの成果物をローカルのdestへエクスポート
+          docker buildx build \
+            --platform linux/amd64 \
+            --file Dockerfile.streamer \
+            --target build \
+            --output type=local,dest=./dist/raw_amd64 .
+            
+          # [linux/arm64]: QEMUエミュレーションを介してコンテナ内でビルドしエクスポート
+          docker buildx build \
+            --platform linux/arm64 \
+            --file Dockerfile.streamer \
+            --target build \
+            --output type=local,dest=./dist/raw_arm64 .
+
+          # 抽出したバイナリをGo側の成果物名と統合して配置
+          cp ./dist/raw_amd64/work/build/edgeplant-video-streamer-cpp ./dist/artifacts/video-streamer-linux-amd64
+          cp ./dist/raw_arm64/work/build/edgeplant-video-streamer-cpp ./dist/artifacts/video-streamer-linux-arm64
+
+      # 4. 改ざん防止用SHA256チェックサムの自動生成
+      - name: Generate checksums
+        run: |
+          cd ./dist/artifacts
+          sha256sum video-streamer-linux-amd64 video-streamer-linux-arm64 > SHA256SUMS
+
+      # 5. 成果物をGitHub Actions Artifactへ保管
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-streamer-release-binaries-${{ steps.meta.outputs.short_sha }}
+          path: |
+            dist/artifacts/video-streamer-linux-amd64
+            dist/artifacts/video-streamer-linux-arm64
+            dist/artifacts/SHA256SUMS
+
+      # 6. GitHub Release へコミットログから自動生成されたノートと共に公開アタッチ
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag_name }}
+          name: Video Streamer Main Build ${{ steps.meta.outputs.short_sha }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          files: |
+            dist/artifacts/video-streamer-linux-amd64
+            dist/artifacts/video-streamer-linux-arm64
+            dist/artifacts/SHA256SUMS
