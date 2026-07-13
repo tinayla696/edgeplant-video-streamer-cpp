@@ -78,7 +78,7 @@ graph TD
 
     %% 外部インターフェース
     WebBrowser[Web設定画面 / 外部HTTPアプリ]:::external
-    V4L2[/dev/video* <br> USBカメラ]:::external
+    V4L2["/dev/video* <br> USBカメラ"]:::external
     Network[RTP / UDP Stream]:::external
 
     subgraph Streamer_App [edgeplant-video-streamer-cpp]
