@@ -42,6 +42,26 @@ raw V4L2入力を固定する。MJPEGのみを出力するカメラでは、`v4l
 
 ユーザー提供の `custom_pipeline` を `gst_parse_launch` で直接起動します。
 
+## RTP受信とHLSブリッジの使い分け
+
+Jetsonから出力されるRTP/H264を利用する側の要件に応じて、HLSブリッジの有無を選択します。
+
+- ブラウザで映像を確認する場合: `udpsrc` から HLS へ変換するブリッジが必要
+- HLSしか受け取れない外部端末へ配信する場合: HLSブリッジが必要
+- 画像解析、AI推論、OpenCVなどRTPを直接受信できるアプリケーション: HLSブリッジは不要
+
+画像解析側は、RTPを直接デコードしてフレームを取得します。
+
+```text
+udpsrc
+  ! application/x-rtp,media=video,encoding-name=H264,payload=96,clock-rate=90000
+  ! rtph264depay ! h264parse ! decoder ! videoconvert ! appsink
+```
+
+同じRTPストリームをブラウザ確認と画像解析で同時利用する場合は、受信側で一度だけRTPを受け、
+`tee` で HLS 出力と `appsink` 出力へ分岐します。複数プロセスが同一UDPポートを直接受信する構成は、
+OSのソケット共有設定やパケット分配の影響を受けるため避けてください。
+
 ## ホットリロード設計
 
 `POST /api/v1/config` 受信時は以下順序で安全に反映します。

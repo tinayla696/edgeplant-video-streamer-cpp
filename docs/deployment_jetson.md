@@ -171,3 +171,19 @@ python3 /path/to/edgeplant-video-streamer-cpp/tools/cors_http_server.py 8090
 
 Jetson WebUIの設定状態を確認する場合は、別途 `http://192.168.11.238:8080/` を開きます。
 ただし、今回のHLSファイルは本PC上に生成されるため、映像確認は本PC側の `8090` を使用します。
+
+## 画像解析システムから直接RTPを受信する場合
+
+画像解析アプリケーションがRTP/H264を直接受信できる場合、ブラウザ確認用のHLSブリッジと
+`cors_http_server.py` は起動不要です。Jetsonの送信先を解析端末のIPへ設定し、解析側で次のような
+受信経路を構築します。
+
+```text
+udpsrc port=5004 caps="application/x-rtp,media=video,encoding-name=H264,payload=96,clock-rate=90000" ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! appsink
+```
+
+OpenCVやAI推論へ接続する場合は、`appsink` からBGRフレームを取得します。Jetson上でハードウェアデコードを
+利用する場合は、解析アプリケーションのGStreamer環境に合わせて `avdec_h264` を `nvv4l2decoder` へ置き換えます。
+
+HLSはブラウザ確認やHLS専用クライアントが必要な場合だけ使用します。画像解析とブラウザ確認を同時に行う場合は、
+RTPを一つの受信プロセスへ集約し、`tee` から解析用 `appsink` とHLS出力へ分岐してください。
