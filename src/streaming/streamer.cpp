@@ -6,8 +6,10 @@
 
 Streamer::Streamer()
     : pipeline_(nullptr),
-      bus_thread_running_(false),
-      running_(false) {
+    bus_thread_running_(false),
+    running_(false),
+    startup_checking_(false),
+    startup_failed_(false) {
     gst_init(nullptr, nullptr);
 }
 
@@ -35,7 +37,7 @@ bool Streamer::StartAdvanced(const std::string& custom_pipeline,
                              std::string* error_message) {
     Stop();
 
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::unique_lock<std::mutex> lock(mutex_);
 
     if (custom_pipeline.empty()) {
         if (error_message) {
@@ -94,8 +96,23 @@ bool Streamer::StartAdvanced(const std::string& custom_pipeline,
 
     running_ = true;
     bus_thread_running_ = true;
+    startup_checking_ = true;
+    startup_failed_ = false;
     bus_thread_ = std::thread(&Streamer::BusWatchLoop, this);
     std::cout << "[streamer] pipeline started" << std::endl;
+
+    lock.unlock();
+    for (int attempt = 0; attempt < 20 && !startup_failed_; ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    startup_checking_ = false;
+    if (startup_failed_) {
+        if (error_message) {
+            *error_message = "pipeline reported an error during startup";
+        }
+        Stop();
+        return false;
+    }
     return true;
 }
 
@@ -168,6 +185,9 @@ void Streamer::BusWatchLoop() {
                 }
                 if (debug) {
                     g_free(debug);
+                }
+                if (startup_checking_) {
+                    startup_failed_ = true;
                 }
                 running_ = false;
                 bus_thread_running_ = false;

@@ -39,4 +39,6 @@ private:
     std::thread bus_thread_;
     std::atomic<bool> bus_thread_running_;
     std::atomic<bool> running_;
+    std::atomic<bool> startup_checking_;
+    std::atomic<bool> startup_failed_;
 };
