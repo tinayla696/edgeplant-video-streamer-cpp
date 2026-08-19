@@ -21,8 +21,15 @@
 
 ### 2. 設定反映テスト
 
-- 条件: `POST /api/v1/config` で `codec`, `target_ip`, `target_port` を変更
+- 条件: `POST /api/v1/config` で `platform`, `codec`, `target_ip`, `target_port` を変更
 - 期待: `result=success`、以後の `status` へ反映される
+
+### 2.1 Simple Pipeline Factory テスト
+
+- `platform=generic, codec=H264` で `x264enc` が選択される
+- `platform=generic, codec=H265` で `x265enc` が選択される
+- Jetson 実機で `platform=jetson` を指定し、H264/H265 の起動ログを取得する
+- `platform=auto` では対応する NVIDIA encoder factory の有無に応じて自動選択される
 
 ### 3. Advanced Mode テスト
 

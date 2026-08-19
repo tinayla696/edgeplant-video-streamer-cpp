@@ -5,6 +5,7 @@
 struct StreamerConfig {
     std::string status = "stopped";
     std::string mode = "simple";
+    std::string platform = "auto";
     std::string device = "/dev/video0";
     std::string codec = "H264";
     std::string target_ip = "127.0.0.1";

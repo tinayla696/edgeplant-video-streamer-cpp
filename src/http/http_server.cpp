@@ -160,11 +160,15 @@ std::string BuildWebUiPage() {
                 <button type="button" id="copyCmd" class="secondary">コマンドをコピー</button>
 
                 <h2 style="margin-top: 20px;">WebUI内映像表示（実験）</h2>
-                <p class="hint">HLSブリッジを別ターミナルで起動すると、この画面内で映像確認できます。</p>
+                <p class="hint">HLSブリッジ起動後、設定を適用するとこの画面で映像を再生します。</p>
                 <div class="video-wrap">
                     <video id="hlsVideo" controls muted playsinline></video>
                 </div>
                 <p class="hint" id="hlsState">状態: 未接続</p>
+                <div class="row">
+                    <label for="hlsSource">HLS再生URL</label>
+                    <input id="hlsSource" value="http://192.168.11.122:8090/stream.m3u8" />
+                </div>
                 <label for="hlsCmd">HLS Bridge Command (GStreamer)</label>
                 <pre id="hlsCmd" class="mono"></pre>
                 <p class="hint" id="hlsCodecHint"></p>
@@ -187,6 +191,14 @@ std::string BuildWebUiPage() {
 
                 <div id="simpleBox">
                     <div class="row2">
+                        <div>
+                            <label for="platform">Platform</label>
+                            <select id="platform">
+                                <option value="auto">auto (検出)</option>
+                                <option value="jetson">Jetson (NVIDIA)</option>
+                                <option value="generic">Generic (CPU)</option>
+                            </select>
+                        </div>
                         <div>
                             <label for="codec">Codec</label>
                             <select id="codec">
@@ -226,7 +238,7 @@ std::string BuildWebUiPage() {
                 </div>
 
                 <div class="row2">
-                    <button type="button" id="applyBtn">設定を適用</button>
+                    <button type="button" id="applyBtn">設定を適用して再生</button>
                     <button type="button" id="reloadBtn" class="secondary">状態を再取得</button>
                 </div>
                 <div id="msg" class="msg"></div>
@@ -242,12 +254,14 @@ std::string BuildWebUiPage() {
         const hlsStateEl = document.getElementById('hlsState');
         const hlsVideoEl = document.getElementById('hlsVideo');
         const hlsCodecHintEl = document.getElementById('hlsCodecHint');
+        const hlsSourceEl = document.getElementById('hlsSource');
 
         const modeRadios = [...document.querySelectorAll('input[name="mode"]')];
         const simpleBox = document.getElementById('simpleBox');
         const advancedBox = document.getElementById('advancedBox');
 
         const codecEl = document.getElementById('codec');
+        const platformEl = document.getElementById('platform');
         const useTestEl = document.getElementById('useTest');
         const deviceEl = document.getElementById('device');
         const targetIpEl = document.getElementById('targetIp');
@@ -286,7 +300,7 @@ std::string BuildWebUiPage() {
             return [
                 'mkdir -p /tmp/edgeplant_hls',
                 'gst-launch-1.0 -q udpsrc port=' + s.target_port + ' caps="' + caps + '" ! ' +
-                    depay + ' ! mpegtsmux ! hlssink max-files=10 playlist-length=5 target-duration=1 ' +
+                    depay + ' ! mpegtsmux ! hlssink max-files=6 playlist-length=3 target-duration=1 ' +
                     'playlist-location=/tmp/edgeplant_hls/stream.m3u8 ' +
                     'location=/tmp/edgeplant_hls/seg_%03d.ts'
             ].join('\n');
@@ -313,6 +327,7 @@ std::string BuildWebUiPage() {
             statusEl.innerHTML = [
                 ['Status', s.status],
                 ['Mode', s.mode],
+                ['Platform', s.platform],
                 ['Codec', s.codec],
                 ['Target', s.target_ip + ':' + s.target_port],
                 ['Source', s.use_test_source ? 'videotestsrc' : ('v4l2src (' + s.device + ')')]
@@ -324,6 +339,7 @@ std::string BuildWebUiPage() {
 
         function fillForm(s) {
             modeRadios.forEach(r => { r.checked = (r.value === s.mode); });
+            platformEl.value = s.platform || 'auto';
             codecEl.value = s.codec || 'H264';
             useTestEl.value = s.use_test_source ? 'true' : 'false';
             deviceEl.value = s.device || '/dev/video0';
@@ -364,6 +380,7 @@ std::string BuildWebUiPage() {
             const mode = activeMode();
             const payload = {
                 mode,
+                platform: platformEl.value,
                 codec: codecEl.value,
                 device: deviceEl.value,
                 target_ip: targetIpEl.value,
@@ -387,13 +404,18 @@ std::string BuildWebUiPage() {
                 }
                 showMessage(data.message || 'applied', 'ok');
                 await refreshAll();
+                await loadHlsPreview();
             } catch (e) {
                 showMessage(String(e), 'warn');
             }
         }
 
         async function loadHlsPreview() {
-            const hlsUrl = '/hls/stream.m3u8?_t=' + Date.now();
+            const hlsUrl = hlsSourceEl.value.trim();
+            if (!hlsUrl) {
+                hlsStateEl.textContent = '状態: HLS再生URLが未設定です';
+                return;
+            }
             clearHlsRetryTimer();
             hlsStateEl.textContent = '状態: 読み込み中...';
 
@@ -406,8 +428,12 @@ std::string BuildWebUiPage() {
                     hlsInstance.destroy();
                     hlsInstance = null;
                 }
-                hlsInstance = new window.Hls({ liveDurationInfinity: true });
-                hlsInstance.loadSource(hlsUrl);
+                hlsInstance = new window.Hls({
+                    liveDurationInfinity: true,
+                    liveSyncDurationCount: 1,
+                    liveMaxLatencyDurationCount: 3
+                });
+                hlsInstance.loadSource(hlsUrl + (hlsUrl.includes('?') ? '&' : '?') + '_t=' + Date.now());
                 hlsInstance.attachMedia(hlsVideoEl);
                 hlsInstance.on(window.Hls.Events.MANIFEST_PARSED, function () {
                     hlsStateEl.textContent = '状態: HLS再生中';

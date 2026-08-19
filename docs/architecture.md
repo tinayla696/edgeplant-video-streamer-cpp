@@ -25,12 +25,18 @@ graph TD
 
 - `use_test_source=true`: `videotestsrc` を入力に使用
 - `use_test_source=false`: `v4l2src device=/dev/video*` を入力に使用
-- エンコーダは実行環境で自動選択
+- `platform` 設定によりエンコーダ経路を選択
 
-自動選択のルール:
+選択ルール:
 
-- Jetson系エンコーダが存在する場合: `nvv4l2h264enc` / `nvv4l2h265enc`
-- それ以外: `x264enc` / `x265enc`
+- `platform=jetson`: `nvv4l2h264enc` / `nvv4l2h265enc`
+- `platform=generic`: `x264enc` / `x265enc`
+- `platform=auto`: Jetson系エンコーダの存在を検出し、利用可能ならJetson経路を選択
+
+実カメラ入力では `decodebin` の動的pad接続を使わず、
+`v4l2src ! video/x-raw,width=1280,height=720,framerate=30/1 ! nvvidconv` として
+raw V4L2入力を固定する。MJPEGのみを出力するカメラでは、`v4l2-ctl --device=/dev/video0
+--list-formats-ext` で形式を確認し、対応するデコーダ経路を別途指定する。
 
 ### Advanced Mode
 

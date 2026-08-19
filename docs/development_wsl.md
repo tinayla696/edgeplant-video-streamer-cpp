@@ -22,6 +22,37 @@ cmake -S . -B build
 cmake --build build -j
 ```
 
+## Ubuntu 18.04 ARM64 クロスビルド
+
+ホストが x86_64 の場合は、Ubuntu 18.04 の sysroot、GStreamer 開発パッケージ、
+ARM64 クロスコンパイラを含む Docker 環境を使用します。
+
+```bash
+docker build \
+  -f Dockerfile.cross-aarch64-ubuntu18.04 \
+  -t edgeplant-video-streamer-cross:ubuntu18.04-arm64 .
+```
+
+この環境には以下が含まれます。
+
+- `aarch64-linux-gnu-g++-8`
+- Ubuntu 18.04 ARM64 の `libc6-dev`
+- ARM64 の `libgstreamer1.0-dev`
+- ARM64 の `libgstreamer-plugins-base1.0-dev`
+- CMake 3.10 / pkg-config
+
+ビルド成果物をホストへ取り出す場合:
+
+```bash
+container=$(docker create edgeplant-video-streamer-cross:ubuntu18.04-arm64)
+docker cp "$container:/work/build-arm64/edgeplant-video-streamer-cpp" ./edgeplant-video-streamer-cpp-arm64
+docker rm "$container"
+file ./edgeplant-video-streamer-cpp-arm64
+```
+
+`file` の結果が `ELF 64-bit ... ARM aarch64` であることを確認してから、
+Ubuntu 18.04 ARM64 / Jetson TX2 環境へ配置してください。
+
 ## 実行
 
 ```bash
@@ -62,7 +93,7 @@ mkdir -p /tmp/edgeplant_hls
 gst-launch-1.0 -q \
   udpsrc port=5004 caps="application/x-rtp,media=video,encoding-name=H264,payload=96,clock-rate=90000" ! \
   rtph264depay ! h264parse config-interval=1 ! mpegtsmux ! \
-  hlssink max-files=10 playlist-length=5 target-duration=1 \
+  hlssink max-files=6 playlist-length=3 target-duration=1 \
   playlist-location=/tmp/edgeplant_hls/stream.m3u8 \
   location=/tmp/edgeplant_hls/seg_%03d.ts
 ```
