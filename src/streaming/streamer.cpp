@@ -6,8 +6,10 @@
 
 Streamer::Streamer()
     : pipeline_(nullptr),
-      bus_thread_running_(false),
-      running_(false) {
+    bus_thread_running_(false),
+    running_(false),
+    startup_checking_(false),
+    startup_failed_(false) {
     gst_init(nullptr, nullptr);
 }
 
@@ -21,9 +23,13 @@ bool Streamer::StartSimple(bool use_test_source,
                            const std::string& codec,
                            const std::string& target_ip,
                            int target_port,
+                           int width,
+                           int height,
+                           int framerate,
                            std::string* error_message) {
     const std::string pipeline = PipelineFactory::Build({
-        platform, codec, use_test_source, device, target_ip, target_port});
+        platform, codec, use_test_source, device, target_ip, target_port,
+        width, height, framerate});
     return StartAdvanced(pipeline, error_message);
 }
 
@@ -31,7 +37,7 @@ bool Streamer::StartAdvanced(const std::string& custom_pipeline,
                              std::string* error_message) {
     Stop();
 
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::unique_lock<std::mutex> lock(mutex_);
 
     if (custom_pipeline.empty()) {
         if (error_message) {
@@ -73,10 +79,41 @@ bool Streamer::StartAdvanced(const std::string& custom_pipeline,
         return false;
     }
 
+    GstState current_state = GST_STATE_NULL;
+    GstState pending_state = GST_STATE_NULL;
+    const GstStateChangeReturn wait_ret = gst_element_get_state(
+        pipeline_, &current_state, &pending_state, 5 * GST_SECOND);
+    if (wait_ret == GST_STATE_CHANGE_FAILURE || current_state != GST_STATE_PLAYING) {
+        if (error_message) {
+            *error_message = "pipeline did not reach PLAYING (current=" +
+                             std::to_string(current_state) + ", pending=" +
+                             std::to_string(pending_state) + ")";
+        }
+        gst_element_set_state(pipeline_, GST_STATE_NULL);
+        gst_object_unref(pipeline_);
+        pipeline_ = nullptr;
+        return false;
+    }
+
     running_ = true;
     bus_thread_running_ = true;
+    startup_checking_ = true;
+    startup_failed_ = false;
     bus_thread_ = std::thread(&Streamer::BusWatchLoop, this);
     std::cout << "[streamer] pipeline started" << std::endl;
+
+    lock.unlock();
+    for (int attempt = 0; attempt < 20 && running_ && !startup_failed_; ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    startup_checking_ = false;
+    if (startup_failed_ || !running_) {
+        if (error_message) {
+            *error_message = "pipeline reported an error during startup";
+        }
+        Stop();
+        return false;
+    }
     return true;
 }
 
@@ -149,6 +186,9 @@ void Streamer::BusWatchLoop() {
                 }
                 if (debug) {
                     g_free(debug);
+                }
+                if (startup_checking_) {
+                    startup_failed_ = true;
                 }
                 running_ = false;
                 bus_thread_running_ = false;

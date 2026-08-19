@@ -20,6 +20,9 @@ public:
                      const std::string& codec,
                      const std::string& target_ip,
                      int target_port,
+                     int width,
+                     int height,
+                     int framerate,
                      std::string* error_message = nullptr);
 
     bool StartAdvanced(const std::string& custom_pipeline,
@@ -36,4 +39,6 @@ private:
     std::thread bus_thread_;
     std::atomic<bool> bus_thread_running_;
     std::atomic<bool> running_;
+    std::atomic<bool> startup_checking_;
+    std::atomic<bool> startup_failed_;
 };

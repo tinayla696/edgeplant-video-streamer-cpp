@@ -214,6 +214,11 @@ std::string BuildWebUiPage() {
                             </select>
                         </div>
                     </div>
+                    <div class="row2">
+                        <div><label for="width">Width</label><input id="width" type="number" min="1" value="1280" /></div>
+                        <div><label for="height">Height</label><input id="height" type="number" min="1" value="720" /></div>
+                        <div><label for="framerate">FPS</label><input id="framerate" type="number" min="1" value="30" /></div>
+                    </div>
                     <div class="row">
                         <label for="device">Device</label>
                         <input id="device" value="/dev/video0" />
@@ -263,6 +268,9 @@ std::string BuildWebUiPage() {
         const codecEl = document.getElementById('codec');
         const platformEl = document.getElementById('platform');
         const useTestEl = document.getElementById('useTest');
+        const widthEl = document.getElementById('width');
+        const heightEl = document.getElementById('height');
+        const framerateEl = document.getElementById('framerate');
         const deviceEl = document.getElementById('device');
         const targetIpEl = document.getElementById('targetIp');
         const targetPortEl = document.getElementById('targetPort');
@@ -295,7 +303,7 @@ std::string BuildWebUiPage() {
 
         function hlsCommandFromStatus(s) {
             const codec = s.codec === 'H265' ? 'H265' : 'H264';
-            const depay = codec === 'H265' ? 'rtph265depay ! h265parse' : 'rtph264depay ! h264parse config-interval=1';
+            const depay = codec === 'H265' ? 'rtph265depay ! h265parse config-interval=-1' : 'rtph264depay ! h264parse config-interval=1';
             const caps = 'application/x-rtp,media=video,encoding-name=' + codec + ',payload=96,clock-rate=90000';
             return [
                 'mkdir -p /tmp/edgeplant_hls',
@@ -316,10 +324,13 @@ std::string BuildWebUiPage() {
 
         function hlsHintFromStatus(s) {
             const codec = s.codec === 'H265' ? 'H265' : 'H264';
+            const codecWarn = codec === 'H265'
+                ? ' / H265はブラウザ環境によって再生非対応です。RTP直接再生で確認してください。'
+                : '';
             const modeWarn = s.mode === 'advanced'
                 ? ' / 高度設定では独自パイプラインがRTP(H26x/PT=96)でない場合、HLSプレビューできません。'
                 : '';
-            return '現在の配信Codec: ' + codec + ' (port=' + s.target_port + ')' + modeWarn;
+            return '現在の配信Codec: ' + codec + ' (port=' + s.target_port + ')' + codecWarn + modeWarn;
         }
 
         function renderStatus(s) {
@@ -342,6 +353,9 @@ std::string BuildWebUiPage() {
             platformEl.value = s.platform || 'auto';
             codecEl.value = s.codec || 'H264';
             useTestEl.value = s.use_test_source ? 'true' : 'false';
+            widthEl.value = String(s.width || 1280);
+            heightEl.value = String(s.height || 720);
+            framerateEl.value = String(s.framerate || 30);
             deviceEl.value = s.device || '/dev/video0';
             targetIpEl.value = s.target_ip || '127.0.0.1';
             targetPortEl.value = String(s.target_port || 5004);
@@ -386,6 +400,9 @@ std::string BuildWebUiPage() {
                 target_ip: targetIpEl.value,
                 target_port: Number(targetPortEl.value),
                 use_test_source: useTestEl.value === 'true'
+                ,width: Number(widthEl.value)
+                ,height: Number(heightEl.value)
+                ,framerate: Number(framerateEl.value)
             };
 
             if (mode === 'advanced') {
@@ -423,6 +440,8 @@ std::string BuildWebUiPage() {
                 hlsStateEl.textContent = '状態: 読み込み中...（高度設定の独自パイプラインではHLS未生成の可能性があります）';
             }
 
+            const cacheBustedUrl = hlsUrl + (hlsUrl.includes('?') ? '&' : '?') + '_t=' + Date.now();
+
             if (window.Hls && window.Hls.isSupported()) {
                 if (hlsInstance) {
                     hlsInstance.destroy();
@@ -433,7 +452,7 @@ std::string BuildWebUiPage() {
                     liveSyncDurationCount: 1,
                     liveMaxLatencyDurationCount: 3
                 });
-                hlsInstance.loadSource(hlsUrl + (hlsUrl.includes('?') ? '&' : '?') + '_t=' + Date.now());
+                hlsInstance.loadSource(cacheBustedUrl);
                 hlsInstance.attachMedia(hlsVideoEl);
                 hlsInstance.on(window.Hls.Events.MANIFEST_PARSED, function () {
                     hlsStateEl.textContent = '状態: HLS再生中';
@@ -473,7 +492,7 @@ std::string BuildWebUiPage() {
             }
 
             if (hlsVideoEl.canPlayType('application/vnd.apple.mpegurl')) {
-                hlsVideoEl.src = hlsUrl;
+                hlsVideoEl.src = cacheBustedUrl;
                 hlsVideoEl.play().catch(function () {});
                 hlsStateEl.textContent = '状態: ネイティブHLS再生試行中';
             } else {

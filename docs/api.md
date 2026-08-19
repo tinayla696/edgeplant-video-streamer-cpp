@@ -38,6 +38,9 @@ WebUI実験機能向けの静的ファイル配信ルートです。
   "platform": "auto",
   "device": "/dev/video0",
   "codec": "H264",
+  "width": 1280,
+  "height": 720,
+  "framerate": 30,
   "target_ip": "127.0.0.1",
   "target_port": 5004,
   "custom_pipeline": "",
@@ -55,6 +58,9 @@ WebUI実験機能向けの静的ファイル配信ルートです。
 - `platform`: `auto`、`jetson`、または `generic`
 - `device`: 例 `/dev/video0`
 - `codec`: `H264` または `H265`
+- `width`: 映像幅（正の整数、既定値 `1280`）
+- `height`: 映像高さ（正の整数、既定値 `720`）
+- `framerate`: フレームレート（正の整数、既定値 `30`）
 - `target_ip`: 送信先IP
 - `target_port`: 1..65535
 - `use_test_source`: `true`/`false`

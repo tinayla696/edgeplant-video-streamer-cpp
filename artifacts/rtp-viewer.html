@@ -16,16 +16,17 @@
   <script>
     const video = document.getElementById('video');
     const source = new URLSearchParams(window.location.search).get('source') || '/stream.m3u8';
+    const cacheBustedSource = source + (source.includes('?') ? '&' : '?') + '_t=' + Date.now();
     if (window.Hls && window.Hls.isSupported()) {
       const hls = new window.Hls({
         liveDurationInfinity: true,
         liveSyncDurationCount: 1,
         liveMaxLatencyDurationCount: 3
       });
-      hls.loadSource(source);
+      hls.loadSource(cacheBustedSource);
       hls.attachMedia(video);
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = source;
+      video.src = cacheBustedSource;
     } else {
       document.body.insertAdjacentHTML('beforeend', '<p>This browser does not support HLS playback.</p>');
     }
