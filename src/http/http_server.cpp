@@ -214,6 +214,11 @@ std::string BuildWebUiPage() {
                             </select>
                         </div>
                     </div>
+                    <div class="row2">
+                        <div><label for="width">Width</label><input id="width" type="number" min="1" value="1280" /></div>
+                        <div><label for="height">Height</label><input id="height" type="number" min="1" value="720" /></div>
+                        <div><label for="framerate">FPS</label><input id="framerate" type="number" min="1" value="30" /></div>
+                    </div>
                     <div class="row">
                         <label for="device">Device</label>
                         <input id="device" value="/dev/video0" />
@@ -263,6 +268,9 @@ std::string BuildWebUiPage() {
         const codecEl = document.getElementById('codec');
         const platformEl = document.getElementById('platform');
         const useTestEl = document.getElementById('useTest');
+        const widthEl = document.getElementById('width');
+        const heightEl = document.getElementById('height');
+        const framerateEl = document.getElementById('framerate');
         const deviceEl = document.getElementById('device');
         const targetIpEl = document.getElementById('targetIp');
         const targetPortEl = document.getElementById('targetPort');
@@ -342,6 +350,9 @@ std::string BuildWebUiPage() {
             platformEl.value = s.platform || 'auto';
             codecEl.value = s.codec || 'H264';
             useTestEl.value = s.use_test_source ? 'true' : 'false';
+            widthEl.value = String(s.width || 1280);
+            heightEl.value = String(s.height || 720);
+            framerateEl.value = String(s.framerate || 30);
             deviceEl.value = s.device || '/dev/video0';
             targetIpEl.value = s.target_ip || '127.0.0.1';
             targetPortEl.value = String(s.target_port || 5004);
@@ -386,6 +397,9 @@ std::string BuildWebUiPage() {
                 target_ip: targetIpEl.value,
                 target_port: Number(targetPortEl.value),
                 use_test_source: useTestEl.value === 'true'
+                ,width: Number(widthEl.value)
+                ,height: Number(heightEl.value)
+                ,framerate: Number(framerateEl.value)
             };
 
             if (mode === 'advanced') {

@@ -24,7 +24,10 @@
   "codec": "H264",
   "target_ip": "<destination-ip>",
   "target_port": 5004,
-  "use_test_source": false
+  "use_test_source": false,
+  "width": 1280,
+  "height": 720,
+  "framerate": 30
 }
 ```
 

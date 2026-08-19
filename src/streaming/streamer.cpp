@@ -21,9 +21,13 @@ bool Streamer::StartSimple(bool use_test_source,
                            const std::string& codec,
                            const std::string& target_ip,
                            int target_port,
+                           int width,
+                           int height,
+                           int framerate,
                            std::string* error_message) {
     const std::string pipeline = PipelineFactory::Build({
-        platform, codec, use_test_source, device, target_ip, target_port});
+        platform, codec, use_test_source, device, target_ip, target_port,
+        width, height, framerate});
     return StartAdvanced(pipeline, error_message);
 }
 

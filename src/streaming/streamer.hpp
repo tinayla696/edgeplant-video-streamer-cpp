@@ -20,6 +20,9 @@ public:
                      const std::string& codec,
                      const std::string& target_ip,
                      int target_port,
+                     int width,
+                     int height,
+                     int framerate,
                      std::string* error_message = nullptr);
 
     bool StartAdvanced(const std::string& custom_pipeline,

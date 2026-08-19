@@ -40,15 +40,18 @@ std::string PipelineFactory::Build(const PipelinePreset& preset) {
     std::ostringstream pipeline;
     if (preset.use_test_source) {
         pipeline << "videotestsrc is-live=true pattern=ball "
-                 << "! video/x-raw,format=NV12,width=1280,height=720,framerate=30/1 ";
+                 << "! video/x-raw,format=NV12,width=" << preset.width
+                 << ",height=" << preset.height << ",framerate=" << preset.framerate << "/1 ";
     } else {
         pipeline << "v4l2src device=" << preset.device << " do-timestamp=true "
-                 << "! video/x-raw,width=1280,height=720,framerate=30/1 ";
+                 << "! video/x-raw,width=" << preset.width
+                 << ",height=" << preset.height << ",framerate=" << preset.framerate << "/1 ";
     }
 
     if (use_jetson) {
         pipeline << "! nvvidconv "
-                 << "! video/x-raw(memory:NVMM),format=NV12,width=1280,height=720,framerate=30/1 ";
+                 << "! video/x-raw(memory:NVMM),format=NV12,width=" << preset.width
+                 << ",height=" << preset.height << ",framerate=" << preset.framerate << "/1 ";
         if (use_h265) {
             pipeline << "! nvv4l2h265enc bitrate=4000000 insert-sps-pps=true iframeinterval=30 "
                      << "! h265parse config-interval=1 ! rtph265pay pt=96 ";
@@ -58,7 +61,8 @@ std::string PipelineFactory::Build(const PipelinePreset& preset) {
         }
     } else {
         pipeline << "! videoconvert ! videoscale ! videorate "
-                 << "! video/x-raw,width=1280,height=720,framerate=30/1 ";
+                 << "! video/x-raw,width=" << preset.width
+                 << ",height=" << preset.height << ",framerate=" << preset.framerate << "/1 ";
         if (use_h265) {
             pipeline << "! x265enc tune=zerolatency bitrate=4000 key-int-max=30 "
                      << "! h265parse config-interval=1 ! rtph265pay pt=96 ";
