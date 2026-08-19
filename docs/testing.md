@@ -66,6 +66,13 @@ curl -s -X POST http://127.0.0.1:8080/api/v1/config \
 - 条件: カメラ配信中に `POST /api/v1/config` で codec/mode を変更
 - 期待: `Stop()` -> `Start()` が排他制御下で成功し、クラッシュ・ハングしない
 
+### 7.1 起動失敗時のロールバックとPLAYING到達確認
+
+- 条件: 非対応 caps または存在しないGStreamer elementを含む設定を送信
+- 期待: パイプラインがPLAYINGへ到達するまでAPI成功を返さない
+- 期待: 起動失敗時はHTTP 500、`rollback=succeeded`、旧設定のstatusが`running`
+- 確認: API直後と3秒後のstatus、Jetsonログ、RTP/HLSセグメント生成を記録する
+
 ### 8. SIGTERM シャットダウン
 
 - 条件: 実行中プロセスへ `SIGTERM` 送信

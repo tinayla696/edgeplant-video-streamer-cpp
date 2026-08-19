@@ -77,6 +77,21 @@ bool Streamer::StartAdvanced(const std::string& custom_pipeline,
         return false;
     }
 
+    GstState current_state = GST_STATE_NULL;
+    GstState pending_state = GST_STATE_NULL;
+    const GstStateChangeReturn wait_ret = gst_element_get_state(
+        pipeline_, &current_state, &pending_state, 5 * GST_SECOND);
+    if (wait_ret == GST_STATE_CHANGE_FAILURE ||
+        (wait_ret == GST_STATE_CHANGE_ASYNC && current_state != GST_STATE_PLAYING)) {
+        if (error_message) {
+            *error_message = "pipeline did not reach PLAYING";
+        }
+        gst_element_set_state(pipeline_, GST_STATE_NULL);
+        gst_object_unref(pipeline_);
+        pipeline_ = nullptr;
+        return false;
+    }
+
     running_ = true;
     bus_thread_running_ = true;
     bus_thread_ = std::thread(&Streamer::BusWatchLoop, this);
