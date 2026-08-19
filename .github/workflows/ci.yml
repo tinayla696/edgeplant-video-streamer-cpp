@@ -9,6 +9,7 @@ on:
 jobs:
   cmake-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,7 +25,7 @@ jobs:
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build build -j
+        run: cmake --build build --parallel 2
 
   docker-multiarch-build:
     runs-on: ubuntu-latest
