@@ -437,6 +437,8 @@ std::string BuildWebUiPage() {
                 hlsStateEl.textContent = '状態: 読み込み中...（高度設定の独自パイプラインではHLS未生成の可能性があります）';
             }
 
+            const cacheBustedUrl = hlsUrl + (hlsUrl.includes('?') ? '&' : '?') + '_t=' + Date.now();
+
             if (window.Hls && window.Hls.isSupported()) {
                 if (hlsInstance) {
                     hlsInstance.destroy();
@@ -447,7 +449,7 @@ std::string BuildWebUiPage() {
                     liveSyncDurationCount: 1,
                     liveMaxLatencyDurationCount: 3
                 });
-                hlsInstance.loadSource(hlsUrl + (hlsUrl.includes('?') ? '&' : '?') + '_t=' + Date.now());
+                hlsInstance.loadSource(cacheBustedUrl);
                 hlsInstance.attachMedia(hlsVideoEl);
                 hlsInstance.on(window.Hls.Events.MANIFEST_PARSED, function () {
                     hlsStateEl.textContent = '状態: HLS再生中';
@@ -487,7 +489,7 @@ std::string BuildWebUiPage() {
             }
 
             if (hlsVideoEl.canPlayType('application/vnd.apple.mpegurl')) {
-                hlsVideoEl.src = hlsUrl;
+                hlsVideoEl.src = cacheBustedUrl;
                 hlsVideoEl.play().catch(function () {});
                 hlsStateEl.textContent = '状態: ネイティブHLS再生試行中';
             } else {
