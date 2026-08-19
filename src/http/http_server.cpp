@@ -160,11 +160,15 @@ std::string BuildWebUiPage() {
                 <button type="button" id="copyCmd" class="secondary">コマンドをコピー</button>
 
                 <h2 style="margin-top: 20px;">WebUI内映像表示（実験）</h2>
-                <p class="hint">HLSブリッジを別ターミナルで起動すると、この画面内で映像確認できます。</p>
+                <p class="hint">HLSブリッジ起動後、設定を適用するとこの画面で映像を再生します。</p>
                 <div class="video-wrap">
                     <video id="hlsVideo" controls muted playsinline></video>
                 </div>
                 <p class="hint" id="hlsState">状態: 未接続</p>
+                <div class="row">
+                    <label for="hlsSource">HLS再生URL</label>
+                    <input id="hlsSource" value="http://192.168.11.122:8090/stream.m3u8" />
+                </div>
                 <label for="hlsCmd">HLS Bridge Command (GStreamer)</label>
                 <pre id="hlsCmd" class="mono"></pre>
                 <p class="hint" id="hlsCodecHint"></p>
@@ -188,6 +192,14 @@ std::string BuildWebUiPage() {
                 <div id="simpleBox">
                     <div class="row2">
                         <div>
+                            <label for="platform">Platform</label>
+                            <select id="platform">
+                                <option value="auto">auto (検出)</option>
+                                <option value="jetson">Jetson (NVIDIA)</option>
+                                <option value="generic">Generic (CPU)</option>
+                            </select>
+                        </div>
+                        <div>
                             <label for="codec">Codec</label>
                             <select id="codec">
                                 <option>H264</option>
@@ -201,6 +213,11 @@ std::string BuildWebUiPage() {
                                 <option value="false">v4l2src (USB Camera)</option>
                             </select>
                         </div>
+                    </div>
+                    <div class="row2">
+                        <div><label for="width">Width</label><input id="width" type="number" min="1" value="1280" /></div>
+                        <div><label for="height">Height</label><input id="height" type="number" min="1" value="720" /></div>
+                        <div><label for="framerate">FPS</label><input id="framerate" type="number" min="1" value="30" /></div>
                     </div>
                     <div class="row">
                         <label for="device">Device</label>
@@ -226,7 +243,7 @@ std::string BuildWebUiPage() {
                 </div>
 
                 <div class="row2">
-                    <button type="button" id="applyBtn">設定を適用</button>
+                    <button type="button" id="applyBtn">設定を適用して再生</button>
                     <button type="button" id="reloadBtn" class="secondary">状態を再取得</button>
                 </div>
                 <div id="msg" class="msg"></div>
@@ -242,13 +259,18 @@ std::string BuildWebUiPage() {
         const hlsStateEl = document.getElementById('hlsState');
         const hlsVideoEl = document.getElementById('hlsVideo');
         const hlsCodecHintEl = document.getElementById('hlsCodecHint');
+        const hlsSourceEl = document.getElementById('hlsSource');
 
         const modeRadios = [...document.querySelectorAll('input[name="mode"]')];
         const simpleBox = document.getElementById('simpleBox');
         const advancedBox = document.getElementById('advancedBox');
 
         const codecEl = document.getElementById('codec');
+        const platformEl = document.getElementById('platform');
         const useTestEl = document.getElementById('useTest');
+        const widthEl = document.getElementById('width');
+        const heightEl = document.getElementById('height');
+        const framerateEl = document.getElementById('framerate');
         const deviceEl = document.getElementById('device');
         const targetIpEl = document.getElementById('targetIp');
         const targetPortEl = document.getElementById('targetPort');
@@ -281,12 +303,12 @@ std::string BuildWebUiPage() {
 
         function hlsCommandFromStatus(s) {
             const codec = s.codec === 'H265' ? 'H265' : 'H264';
-            const depay = codec === 'H265' ? 'rtph265depay ! h265parse' : 'rtph264depay ! h264parse config-interval=1';
+            const depay = codec === 'H265' ? 'rtph265depay ! h265parse config-interval=-1' : 'rtph264depay ! h264parse config-interval=1';
             const caps = 'application/x-rtp,media=video,encoding-name=' + codec + ',payload=96,clock-rate=90000';
             return [
                 'mkdir -p /tmp/edgeplant_hls',
                 'gst-launch-1.0 -q udpsrc port=' + s.target_port + ' caps="' + caps + '" ! ' +
-                    depay + ' ! mpegtsmux ! hlssink max-files=10 playlist-length=5 target-duration=1 ' +
+                    depay + ' ! mpegtsmux ! hlssink max-files=6 playlist-length=3 target-duration=1 ' +
                     'playlist-location=/tmp/edgeplant_hls/stream.m3u8 ' +
                     'location=/tmp/edgeplant_hls/seg_%03d.ts'
             ].join('\n');
@@ -302,10 +324,13 @@ std::string BuildWebUiPage() {
 
         function hlsHintFromStatus(s) {
             const codec = s.codec === 'H265' ? 'H265' : 'H264';
+            const codecWarn = codec === 'H265'
+                ? ' / H265はブラウザ環境によって再生非対応です。RTP直接再生で確認してください。'
+                : '';
             const modeWarn = s.mode === 'advanced'
                 ? ' / 高度設定では独自パイプラインがRTP(H26x/PT=96)でない場合、HLSプレビューできません。'
                 : '';
-            return '現在の配信Codec: ' + codec + ' (port=' + s.target_port + ')' + modeWarn;
+            return '現在の配信Codec: ' + codec + ' (port=' + s.target_port + ')' + codecWarn + modeWarn;
         }
 
         function renderStatus(s) {
@@ -313,6 +338,7 @@ std::string BuildWebUiPage() {
             statusEl.innerHTML = [
                 ['Status', s.status],
                 ['Mode', s.mode],
+                ['Platform', s.platform],
                 ['Codec', s.codec],
                 ['Target', s.target_ip + ':' + s.target_port],
                 ['Source', s.use_test_source ? 'videotestsrc' : ('v4l2src (' + s.device + ')')]
@@ -324,8 +350,12 @@ std::string BuildWebUiPage() {
 
         function fillForm(s) {
             modeRadios.forEach(r => { r.checked = (r.value === s.mode); });
+            platformEl.value = s.platform || 'auto';
             codecEl.value = s.codec || 'H264';
             useTestEl.value = s.use_test_source ? 'true' : 'false';
+            widthEl.value = String(s.width || 1280);
+            heightEl.value = String(s.height || 720);
+            framerateEl.value = String(s.framerate || 30);
             deviceEl.value = s.device || '/dev/video0';
             targetIpEl.value = s.target_ip || '127.0.0.1';
             targetPortEl.value = String(s.target_port || 5004);
@@ -364,11 +394,15 @@ std::string BuildWebUiPage() {
             const mode = activeMode();
             const payload = {
                 mode,
+                platform: platformEl.value,
                 codec: codecEl.value,
                 device: deviceEl.value,
                 target_ip: targetIpEl.value,
                 target_port: Number(targetPortEl.value),
                 use_test_source: useTestEl.value === 'true'
+                ,width: Number(widthEl.value)
+                ,height: Number(heightEl.value)
+                ,framerate: Number(framerateEl.value)
             };
 
             if (mode === 'advanced') {
@@ -387,13 +421,18 @@ std::string BuildWebUiPage() {
                 }
                 showMessage(data.message || 'applied', 'ok');
                 await refreshAll();
+                await loadHlsPreview();
             } catch (e) {
                 showMessage(String(e), 'warn');
             }
         }
 
         async function loadHlsPreview() {
-            const hlsUrl = '/hls/stream.m3u8?_t=' + Date.now();
+            const hlsUrl = hlsSourceEl.value.trim();
+            if (!hlsUrl) {
+                hlsStateEl.textContent = '状態: HLS再生URLが未設定です';
+                return;
+            }
             clearHlsRetryTimer();
             hlsStateEl.textContent = '状態: 読み込み中...';
 
@@ -401,13 +440,19 @@ std::string BuildWebUiPage() {
                 hlsStateEl.textContent = '状態: 読み込み中...（高度設定の独自パイプラインではHLS未生成の可能性があります）';
             }
 
+            const cacheBustedUrl = hlsUrl + (hlsUrl.includes('?') ? '&' : '?') + '_t=' + Date.now();
+
             if (window.Hls && window.Hls.isSupported()) {
                 if (hlsInstance) {
                     hlsInstance.destroy();
                     hlsInstance = null;
                 }
-                hlsInstance = new window.Hls({ liveDurationInfinity: true });
-                hlsInstance.loadSource(hlsUrl);
+                hlsInstance = new window.Hls({
+                    liveDurationInfinity: true,
+                    liveSyncDurationCount: 1,
+                    liveMaxLatencyDurationCount: 3
+                });
+                hlsInstance.loadSource(cacheBustedUrl);
                 hlsInstance.attachMedia(hlsVideoEl);
                 hlsInstance.on(window.Hls.Events.MANIFEST_PARSED, function () {
                     hlsStateEl.textContent = '状態: HLS再生中';
@@ -447,7 +492,7 @@ std::string BuildWebUiPage() {
             }
 
             if (hlsVideoEl.canPlayType('application/vnd.apple.mpegurl')) {
-                hlsVideoEl.src = hlsUrl;
+                hlsVideoEl.src = cacheBustedUrl;
                 hlsVideoEl.play().catch(function () {});
                 hlsStateEl.textContent = '状態: ネイティブHLS再生試行中';
             } else {

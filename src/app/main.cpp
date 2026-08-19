@@ -97,13 +97,17 @@ std::optional<bool> GetBoolField(const std::string& body, const std::string& key
 std::string BuildStatusJson(const StreamerConfig& cfg, bool running) {
     std::ostringstream ss;
     ss << "{"
-       << "\"status\":\"" << (running ? "running" : "stopped") << "\"," 
-       << "\"mode\":\"" << JsonEscape(cfg.mode) << "\"," 
-       << "\"device\":\"" << JsonEscape(cfg.device) << "\"," 
-       << "\"codec\":\"" << JsonEscape(cfg.codec) << "\"," 
-       << "\"target_ip\":\"" << JsonEscape(cfg.target_ip) << "\"," 
+       << "\"status\":\"" << (running ? "running" : "stopped") << "\","
+       << "\"mode\":\"" << JsonEscape(cfg.mode) << "\","
+         << "\"platform\":\"" << JsonEscape(cfg.platform) << "\","
+       << "\"device\":\"" << JsonEscape(cfg.device) << "\","
+       << "\"codec\":\"" << JsonEscape(cfg.codec) << "\","
+    << "\"width\":" << cfg.width << ","
+    << "\"height\":" << cfg.height << ","
+    << "\"framerate\":" << cfg.framerate << ","
+       << "\"target_ip\":\"" << JsonEscape(cfg.target_ip) << "\","
        << "\"target_port\":" << cfg.target_port << ","
-       << "\"custom_pipeline\":\"" << JsonEscape(cfg.custom_pipeline) << "\"," 
+       << "\"custom_pipeline\":\"" << JsonEscape(cfg.custom_pipeline) << "\","
        << "\"use_test_source\":" << (cfg.use_test_source ? "true" : "false")
        << "}";
     return ss.str();
@@ -115,6 +119,20 @@ std::string BuildErrorJson(const std::string& message) {
 
 std::string BuildSuccessJson(const std::string& message) {
     return "{\"result\":\"success\",\"message\":\"" + JsonEscape(message) + "\"}";
+}
+
+std::string BuildReloadErrorJson(const std::string& reload_error,
+                                 bool rollback_ok,
+                                 const std::string& rollback_error) {
+    std::ostringstream ss;
+    ss << "{\"result\":\"error\",\"message\":\""
+       << JsonEscape("failed to reload pipeline: " + reload_error)
+       << "\",\"rollback\":\"" << (rollback_ok ? "succeeded" : "failed") << "\"";
+    if (!rollback_ok) {
+        ss << ",\"rollback_error\":\"" << JsonEscape(rollback_error) << "\"";
+    }
+    ss << "}";
+    return ss.str();
 }
 
 }  // namespace
@@ -134,10 +152,14 @@ int main() {
         std::string err;
         const bool started = streamer.StartSimple(
             config.use_test_source,
+            config.platform,
             config.device,
             config.codec,
             config.target_ip,
             config.target_port,
+            config.width,
+            config.height,
+            config.framerate,
             &err);
         if (!started) {
             std::cerr << "[main] failed to start default pipeline: " << err << std::endl;
@@ -171,6 +193,25 @@ int main() {
             new_cfg.device = *device;
         }
 
+        if (HasKey(body, "platform")) {
+            const auto platform = GetStringField(body, "platform");
+            if (!platform) {
+                return {400, BuildErrorJson("invalid type for platform")};
+            }
+            new_cfg.platform = ToUpperAscii(*platform);
+            if (new_cfg.platform != "AUTO" && new_cfg.platform != "JETSON" &&
+                new_cfg.platform != "GENERIC") {
+                return {400, BuildErrorJson("platform must be auto, jetson, or generic")};
+            }
+            if (new_cfg.platform == "AUTO") {
+                new_cfg.platform = "auto";
+            } else if (new_cfg.platform == "JETSON") {
+                new_cfg.platform = "jetson";
+            } else {
+                new_cfg.platform = "generic";
+            }
+        }
+
         if (HasKey(body, "codec")) {
             const auto codec = GetStringField(body, "codec");
             if (!codec) {
@@ -182,6 +223,23 @@ int main() {
             }
             if (new_cfg.codec == "HEVC") {
                 new_cfg.codec = "H265";
+            }
+        }
+
+        for (const auto& field : {std::string("width"), std::string("height"), std::string("framerate")}) {
+            if (!HasKey(body, field)) {
+                continue;
+            }
+            const auto value = GetIntField(body, field);
+            if (!value || *value <= 0 || *value > 10000) {
+                return {400, BuildErrorJson(field + " must be a positive integer")};
+            }
+            if (field == "width") {
+                new_cfg.width = *value;
+            } else if (field == "height") {
+                new_cfg.height = *value;
+            } else {
+                new_cfg.framerate = *value;
             }
         }
 
@@ -226,38 +284,38 @@ int main() {
             return {400, BuildErrorJson("mode must be simple or advanced")};
         }
 
-        std::string err;
-        bool ok = false;
-        if (new_cfg.mode == "advanced") {
-            if (new_cfg.custom_pipeline.empty()) {
-                return {400, BuildErrorJson("custom_pipeline is required in advanced mode")};
+        auto start_config = [&](const StreamerConfig& cfg, std::string* start_error) {
+            if (cfg.mode == "advanced") {
+                return streamer.StartAdvanced(cfg.custom_pipeline, start_error);
             }
-            ok = streamer.StartAdvanced(new_cfg.custom_pipeline, &err);
-        } else {
-            ok = streamer.StartSimple(
-                new_cfg.use_test_source,
-                new_cfg.device,
-                new_cfg.codec,
-                new_cfg.target_ip,
-                new_cfg.target_port,
-                &err);
+            return streamer.StartSimple(
+                cfg.use_test_source,
+                cfg.platform,
+                cfg.device,
+                cfg.codec,
+                cfg.target_ip,
+                cfg.target_port,
+                cfg.width,
+                cfg.height,
+                cfg.framerate,
+                start_error);
+        };
+
+        if (new_cfg.mode == "advanced" && new_cfg.custom_pipeline.empty()) {
+            return {400, BuildErrorJson("custom_pipeline is required in advanced mode")};
         }
 
-        if (!ok) {
+        std::string err;
+        if (!start_config(new_cfg, &err)) {
             std::cerr << "[main] restart failed, trying rollback: " << err << std::endl;
             std::string rollback_error;
-            if (old_cfg.mode == "advanced") {
-                streamer.StartAdvanced(old_cfg.custom_pipeline, &rollback_error);
+            const bool rollback_ok = start_config(old_cfg, &rollback_error);
+            if (rollback_ok) {
+                std::cerr << "[main] rollback succeeded" << std::endl;
             } else {
-                streamer.StartSimple(
-                    old_cfg.use_test_source,
-                    old_cfg.device,
-                    old_cfg.codec,
-                    old_cfg.target_ip,
-                    old_cfg.target_port,
-                    &rollback_error);
+                std::cerr << "[main] rollback failed: " << rollback_error << std::endl;
             }
-            return {500, BuildErrorJson("failed to reload pipeline: " + err)};
+            return {500, BuildReloadErrorJson(err, rollback_ok, rollback_error)};
         }
 
         config = new_cfg;

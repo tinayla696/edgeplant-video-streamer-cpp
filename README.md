@@ -250,7 +250,7 @@ mkdir -p /tmp/edgeplant_hls
 gst-launch-1.0 -q \
   udpsrc port=5004 caps="application/x-rtp,media=video,encoding-name=H264,payload=96,clock-rate=90000" ! \
   rtph264depay ! h264parse config-interval=1 ! mpegtsmux ! \
-  hlssink max-files=10 playlist-length=5 target-duration=1 \
+  hlssink max-files=6 playlist-length=3 target-duration=1 \
   playlist-location=/tmp/edgeplant_hls/stream.m3u8 \
   location=/tmp/edgeplant_hls/seg_%03d.ts
 ```
@@ -268,6 +268,60 @@ curl -i "http://127.0.0.1:8080/hls/stream.m3u8?_t=$(date +%s)"
 pkill -f "gst-launch-1.0.*hlssink" || true
 pkill -f edgeplant-video-streamer-cpp || true
 ```
+
+### 1.2 実機接続と外部端末からの映像確認
+
+Jetson TX2 (`192.168.11.238`) の映像を、WSL2 (`192.168.11.122`) でRTP受信し、Win11ブラウザで確認する手順です。
+
+1. Win11 の `%UserProfile%\\.wslconfig` に以下を設定し、PowerShell で `wsl --shutdown` を実行します。
+
+```ini
+[wsl2]
+networkingMode=mirrored
+```
+
+WSL2 の `ip -br addr` に `192.168.11.122/24` が表示されることを確認します。管理者 PowerShell では次のFirewall設定も行います。
+
+```powershell
+New-NetFirewallRule -DisplayName "EDGEPLANT RTP 5004" -Direction Inbound -Protocol UDP -LocalPort 5004 -Action Allow
+New-NetFirewallRule -DisplayName "EDGEPLANT HLS 8090" -Direction Inbound -Protocol TCP -LocalPort 8090 -Action Allow
+```
+
+2. WSL2 でRTP受信とHLS変換を起動します。
+
+```bash
+mkdir -p /tmp/edgeplant_hls
+rm -f /tmp/edgeplant_hls/stream.m3u8 /tmp/edgeplant_hls/seg_*.ts
+gst-launch-1.0 -e \
+  udpsrc port=5004 caps='application/x-rtp,media=video,encoding-name=H264,payload=96,clock-rate=90000' ! \
+  rtph264depay ! h264parse config-interval=1 ! mpegtsmux ! \
+  hlssink max-files=6 playlist-length=3 target-duration=1 \
+  playlist-location=/tmp/edgeplant_hls/stream.m3u8 \
+  location=/tmp/edgeplant_hls/seg_%03d.ts
+```
+
+3. 別のWSL2ターミナルでHLS配信用サーバーを起動します。リポジトリルートから起動せず、HLSディレクトリを公開ルートにしてください。
+
+```bash
+cd /tmp/edgeplant_hls
+python3 /home/azapaeng/tinayla696/edgeplant-video-streamer-cpp/tools/cors_http_server.py 8090
+```
+
+4. Jetsonへバイナリを転送して起動します。
+
+```bash
+scp artifacts/edgeplant-video-streamer-cpp-arm64 t1@192.168.11.238:/home/t1/Workspace/
+ssh t1@192.168.11.238
+cd /home/t1/Workspace
+chmod +x edgeplant-video-streamer-cpp-arm64
+./edgeplant-video-streamer-cpp-arm64
+```
+
+5. Win11ブラウザで `http://192.168.11.238:8080/` を開き、`HLS再生URL` に `http://192.168.11.122:8090/stream.m3u8` を入力します。ストリーム設定に `jetson`、`/dev/video0`、`H264`、送信先 `192.168.11.122:5004`、`v4l2src (USB Camera)` を設定し、「設定を適用して再生」を押します。
+
+6. WSL2 の `/tmp/edgeplant_hls` に `stream.m3u8` と `seg_*.ts` が生成され、HTTPログに `GET /stream.m3u8 200` と `GET /seg_*.ts 200` が出ることを確認します。今回の実機ブラウザ映像の実測遅延は約3秒でした。
+
+HLS Bridge Command はWSL2で実行し、設定送信と映像再生はJetson側の `:8080` WebUIで行います。ブラウザから `gst-launch-1.0` を直接起動することはできません。
 
 ### 2. Dockerコンテナによる実機デプロイ・運用
 

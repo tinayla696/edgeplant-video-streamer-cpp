@@ -7,16 +7,22 @@
 
 #include <gst/gst.h>
 
+#include "streaming/pipeline_factory.hpp"
+
 class Streamer {
 public:
     Streamer();
     ~Streamer();
 
     bool StartSimple(bool use_test_source,
+                     const std::string& platform,
                      const std::string& device,
                      const std::string& codec,
                      const std::string& target_ip,
                      int target_port,
+                     int width,
+                     int height,
+                     int framerate,
                      std::string* error_message = nullptr);
 
     bool StartAdvanced(const std::string& custom_pipeline,
@@ -26,13 +32,6 @@ public:
     bool IsRunning() const;
 
 private:
-    std::string BuildSimplePipeline(bool use_test_source,
-                                    const std::string& device,
-                                    const std::string& codec,
-                                    const std::string& target_ip,
-                                    int target_port) const;
-
-    bool IsJetsonEncoderAvailable(const std::string& codec) const;
     void BusWatchLoop();
 
     mutable std::mutex mutex_;
@@ -40,4 +39,6 @@ private:
     std::thread bus_thread_;
     std::atomic<bool> bus_thread_running_;
     std::atomic<bool> running_;
+    std::atomic<bool> startup_checking_;
+    std::atomic<bool> startup_failed_;
 };

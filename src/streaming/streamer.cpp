@@ -4,23 +4,12 @@
 #include <iostream>
 #include <sstream>
 
-namespace {
-
-std::string ToUpperAscii(std::string value) {
-    for (char& c : value) {
-        if (c >= 'a' && c <= 'z') {
-            c = static_cast<char>(c - 'a' + 'A');
-        }
-    }
-    return value;
-}
-
-}  // namespace
-
 Streamer::Streamer()
     : pipeline_(nullptr),
-      bus_thread_running_(false),
-      running_(false) {
+    bus_thread_running_(false),
+    running_(false),
+    startup_checking_(false),
+    startup_failed_(false) {
     gst_init(nullptr, nullptr);
 }
 
@@ -29,13 +18,18 @@ Streamer::~Streamer() {
 }
 
 bool Streamer::StartSimple(bool use_test_source,
+                           const std::string& platform,
                            const std::string& device,
                            const std::string& codec,
                            const std::string& target_ip,
                            int target_port,
+                           int width,
+                           int height,
+                           int framerate,
                            std::string* error_message) {
-    const std::string pipeline = BuildSimplePipeline(
-        use_test_source, device, codec, target_ip, target_port);
+    const std::string pipeline = PipelineFactory::Build({
+        platform, codec, use_test_source, device, target_ip, target_port,
+        width, height, framerate});
     return StartAdvanced(pipeline, error_message);
 }
 
@@ -43,7 +37,7 @@ bool Streamer::StartAdvanced(const std::string& custom_pipeline,
                              std::string* error_message) {
     Stop();
 
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::unique_lock<std::mutex> lock(mutex_);
 
     if (custom_pipeline.empty()) {
         if (error_message) {
@@ -85,10 +79,41 @@ bool Streamer::StartAdvanced(const std::string& custom_pipeline,
         return false;
     }
 
+    GstState current_state = GST_STATE_NULL;
+    GstState pending_state = GST_STATE_NULL;
+    const GstStateChangeReturn wait_ret = gst_element_get_state(
+        pipeline_, &current_state, &pending_state, 5 * GST_SECOND);
+    if (wait_ret == GST_STATE_CHANGE_FAILURE || current_state != GST_STATE_PLAYING) {
+        if (error_message) {
+            *error_message = "pipeline did not reach PLAYING (current=" +
+                             std::to_string(current_state) + ", pending=" +
+                             std::to_string(pending_state) + ")";
+        }
+        gst_element_set_state(pipeline_, GST_STATE_NULL);
+        gst_object_unref(pipeline_);
+        pipeline_ = nullptr;
+        return false;
+    }
+
     running_ = true;
     bus_thread_running_ = true;
+    startup_checking_ = true;
+    startup_failed_ = false;
     bus_thread_ = std::thread(&Streamer::BusWatchLoop, this);
     std::cout << "[streamer] pipeline started" << std::endl;
+
+    lock.unlock();
+    for (int attempt = 0; attempt < 20 && running_ && !startup_failed_; ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    startup_checking_ = false;
+    if (startup_failed_ || !running_) {
+        if (error_message) {
+            *error_message = "pipeline reported an error during startup";
+        }
+        Stop();
+        return false;
+    }
     return true;
 }
 
@@ -122,75 +147,6 @@ void Streamer::Stop() {
 
 bool Streamer::IsRunning() const {
     return running_;
-}
-
-std::string Streamer::BuildSimplePipeline(bool use_test_source,
-                                          const std::string& device,
-                                          const std::string& codec,
-                                          const std::string& target_ip,
-                                          int target_port) const {
-    const std::string codec_upper = ToUpperAscii(codec);
-    const bool use_h265 = (codec_upper == "H265" || codec_upper == "HEVC");
-    const bool use_jetson_encoder = IsJetsonEncoderAvailable(use_h265 ? "H265" : "H264");
-
-    std::ostringstream ss;
-
-    if (use_test_source) {
-        ss << "videotestsrc is-live=true pattern=ball "
-           << "! video/x-raw,format=NV12,width=1280,height=720,framerate=30/1 ";
-    } else {
-          // decodebin allows both raw and MJPEG-capable USB cameras to negotiate.
-        ss << "v4l2src device=" << device << " do-timestamp=true "
-              << "! decodebin ";
-    }
-
-    if (use_jetson_encoder) {
-        ss << "! nvvidconv "
-           << "! video/x-raw(memory:NVMM),format=NV12,width=1280,height=720,framerate=30/1 ";
-
-        if (use_h265) {
-            ss << "! nvv4l2h265enc bitrate=4000000 insert-sps-pps=true iframeinterval=30 "
-               << "! h265parse config-interval=1 "
-               << "! rtph265pay pt=96 ";
-        } else {
-            ss << "! nvv4l2h264enc bitrate=4000000 insert-sps-pps=true iframeinterval=30 "
-               << "! h264parse config-interval=1 "
-               << "! rtph264pay pt=96 ";
-        }
-    } else {
-        ss << "! videoconvert "
-           << "! videoscale "
-           << "! videorate "
-           << "! video/x-raw,width=1280,height=720,framerate=30/1 ";
-        if (use_h265) {
-            ss << "! x265enc tune=zerolatency bitrate=4000 key-int-max=30 "
-               << "! h265parse config-interval=1 "
-               << "! rtph265pay pt=96 ";
-        } else {
-            ss << "! x264enc tune=zerolatency speed-preset=ultrafast bitrate=4000 key-int-max=30 "
-               << "! h264parse config-interval=1 "
-               << "! rtph264pay pt=96 ";
-        }
-    }
-
-    ss << "! udpsink host=" << target_ip << " port=" << target_port
-       << " sync=false async=false";
-
-    return ss.str();
-}
-
-bool Streamer::IsJetsonEncoderAvailable(const std::string& codec) const {
-    const std::string codec_upper = ToUpperAscii(codec);
-    const char* factory_name = (codec_upper == "H265" || codec_upper == "HEVC")
-                                   ? "nvv4l2h265enc"
-                                   : "nvv4l2h264enc";
-
-    GstElementFactory* factory = gst_element_factory_find(factory_name);
-    if (factory) {
-        gst_object_unref(factory);
-        return true;
-    }
-    return false;
 }
 
 void Streamer::BusWatchLoop() {
@@ -230,6 +186,9 @@ void Streamer::BusWatchLoop() {
                 }
                 if (debug) {
                     g_free(debug);
+                }
+                if (startup_checking_) {
+                    startup_failed_ = true;
                 }
                 running_ = false;
                 bus_thread_running_ = false;

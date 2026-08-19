@@ -12,8 +12,8 @@ jobs:
             echo "✅ 'develop' branch is allowed. Skipping check."
             exit 0
           fi
-          if [[ ! "$BRANCH_NAME" =~ ^(feature|bugfix|docs|hotfix|chore|release)/ ]]; then
+          if [[ ! "$BRANCH_NAME" =~ ^(feat|feature|bugfix|docs|hotfix|chore|release)/ ]]; then
             echo "❌ Error: Branch '$BRANCH_NAME' is invalid."
-            echo "Allowed prefixes: feature/, bugfix/, docs/, hotfix/, chore/, release/"
+            echo "Allowed prefixes: feat/, feature/, bugfix/, docs/, hotfix/, chore/, release/"
             exit 1
           fi

@@ -27,3 +27,9 @@ edgeplant-video-streamer-cpp は、GStreamer Core API を利用して映像ソ�
 - [Development (Windows11 + WSL)](development_wsl.md): ローカル開発手順
 - [Test Plan](testing.md): テスト項目と合格基準
 - [Deployment (Jetson)](deployment_jetson.md): 実機展開チェックリスト
+
+### 接続方式の選択
+
+- ブラウザ映像確認: RTP/HLSブリッジを使用
+- 画像解析・AI推論: RTPを直接受信し、HLSブリッジは使用しない
+- 両方を同時利用: RTP受信を集約し、HLSと解析へ分岐
