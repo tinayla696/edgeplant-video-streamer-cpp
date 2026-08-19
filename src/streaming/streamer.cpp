@@ -83,10 +83,11 @@ bool Streamer::StartAdvanced(const std::string& custom_pipeline,
     GstState pending_state = GST_STATE_NULL;
     const GstStateChangeReturn wait_ret = gst_element_get_state(
         pipeline_, &current_state, &pending_state, 5 * GST_SECOND);
-    if (wait_ret == GST_STATE_CHANGE_FAILURE ||
-        (wait_ret == GST_STATE_CHANGE_ASYNC && current_state != GST_STATE_PLAYING)) {
+    if (wait_ret == GST_STATE_CHANGE_FAILURE || current_state != GST_STATE_PLAYING) {
         if (error_message) {
-            *error_message = "pipeline did not reach PLAYING";
+            *error_message = "pipeline did not reach PLAYING (current=" +
+                             std::to_string(current_state) + ", pending=" +
+                             std::to_string(pending_state) + ")";
         }
         gst_element_set_state(pipeline_, GST_STATE_NULL);
         gst_object_unref(pipeline_);
@@ -102,11 +103,11 @@ bool Streamer::StartAdvanced(const std::string& custom_pipeline,
     std::cout << "[streamer] pipeline started" << std::endl;
 
     lock.unlock();
-    for (int attempt = 0; attempt < 20 && !startup_failed_; ++attempt) {
+    for (int attempt = 0; attempt < 20 && running_ && !startup_failed_; ++attempt) {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
     startup_checking_ = false;
-    if (startup_failed_) {
+    if (startup_failed_ || !running_) {
         if (error_message) {
             *error_message = "pipeline reported an error during startup";
         }
