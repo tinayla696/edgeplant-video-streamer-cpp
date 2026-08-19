@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EDGEPLANT RTP Viewer</title>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+  <style>
+    body { margin: 2rem; background: #111; color: #eee; font-family: sans-serif; }
+    video { display: block; width: min(1280px, 100%); background: #000; }
+  </style>
+</head>
+<body>
+  <h1>EDGEPLANT RTP Viewer</h1>
+  <video id="video" controls autoplay muted playsinline></video>
+  <script>
+    const video = document.getElementById('video');
+    const source = new URLSearchParams(window.location.search).get('source') || '/stream.m3u8';
+    if (window.Hls && window.Hls.isSupported()) {
+      const hls = new window.Hls({
+        liveDurationInfinity: true,
+        liveSyncDurationCount: 1,
+        liveMaxLatencyDurationCount: 3
+      });
+      hls.loadSource(source);
+      hls.attachMedia(video);
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = source;
+    } else {
+      document.body.insertAdjacentHTML('beforeend', '<p>This browser does not support HLS playback.</p>');
+    }
+  </script>
+</body>
+</html>

@@ -97,13 +97,14 @@ std::optional<bool> GetBoolField(const std::string& body, const std::string& key
 std::string BuildStatusJson(const StreamerConfig& cfg, bool running) {
     std::ostringstream ss;
     ss << "{"
-       << "\"status\":\"" << (running ? "running" : "stopped") << "\"," 
-       << "\"mode\":\"" << JsonEscape(cfg.mode) << "\"," 
-       << "\"device\":\"" << JsonEscape(cfg.device) << "\"," 
-       << "\"codec\":\"" << JsonEscape(cfg.codec) << "\"," 
-       << "\"target_ip\":\"" << JsonEscape(cfg.target_ip) << "\"," 
+       << "\"status\":\"" << (running ? "running" : "stopped") << "\","
+       << "\"mode\":\"" << JsonEscape(cfg.mode) << "\","
+         << "\"platform\":\"" << JsonEscape(cfg.platform) << "\","
+       << "\"device\":\"" << JsonEscape(cfg.device) << "\","
+       << "\"codec\":\"" << JsonEscape(cfg.codec) << "\","
+       << "\"target_ip\":\"" << JsonEscape(cfg.target_ip) << "\","
        << "\"target_port\":" << cfg.target_port << ","
-       << "\"custom_pipeline\":\"" << JsonEscape(cfg.custom_pipeline) << "\"," 
+       << "\"custom_pipeline\":\"" << JsonEscape(cfg.custom_pipeline) << "\","
        << "\"use_test_source\":" << (cfg.use_test_source ? "true" : "false")
        << "}";
     return ss.str();
@@ -134,6 +135,7 @@ int main() {
         std::string err;
         const bool started = streamer.StartSimple(
             config.use_test_source,
+            config.platform,
             config.device,
             config.codec,
             config.target_ip,
@@ -169,6 +171,25 @@ int main() {
                 return {400, BuildErrorJson("invalid type for device")};
             }
             new_cfg.device = *device;
+        }
+
+        if (HasKey(body, "platform")) {
+            const auto platform = GetStringField(body, "platform");
+            if (!platform) {
+                return {400, BuildErrorJson("invalid type for platform")};
+            }
+            new_cfg.platform = ToUpperAscii(*platform);
+            if (new_cfg.platform != "AUTO" && new_cfg.platform != "JETSON" &&
+                new_cfg.platform != "GENERIC") {
+                return {400, BuildErrorJson("platform must be auto, jetson, or generic")};
+            }
+            if (new_cfg.platform == "AUTO") {
+                new_cfg.platform = "auto";
+            } else if (new_cfg.platform == "JETSON") {
+                new_cfg.platform = "jetson";
+            } else {
+                new_cfg.platform = "generic";
+            }
         }
 
         if (HasKey(body, "codec")) {
@@ -236,6 +257,7 @@ int main() {
         } else {
             ok = streamer.StartSimple(
                 new_cfg.use_test_source,
+                new_cfg.platform,
                 new_cfg.device,
                 new_cfg.codec,
                 new_cfg.target_ip,
@@ -251,6 +273,7 @@ int main() {
             } else {
                 streamer.StartSimple(
                     old_cfg.use_test_source,
+                    old_cfg.platform,
                     old_cfg.device,
                     old_cfg.codec,
                     old_cfg.target_ip,

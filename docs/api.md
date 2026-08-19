@@ -35,6 +35,7 @@ WebUI実験機能向けの静的ファイル配信ルートです。
 {
   "status": "running",
   "mode": "simple",
+  "platform": "auto",
   "device": "/dev/video0",
   "codec": "H264",
   "target_ip": "127.0.0.1",
@@ -51,6 +52,7 @@ WebUI実験機能向けの静的ファイル配信ルートです。
 ### 受け付けフィールド
 
 - `mode`: `simple` または `advanced`
+- `platform`: `auto`、`jetson`、または `generic`
 - `device`: 例 `/dev/video0`
 - `codec`: `H264` または `H265`
 - `target_ip`: 送信先IP
@@ -63,6 +65,7 @@ WebUI実験機能向けの静的ファイル配信ルートです。
 ```json
 {
   "mode": "simple",
+  "platform": "auto",
   "codec": "H264",
   "target_ip": "127.0.0.1",
   "target_port": 5004,

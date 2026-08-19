@@ -2,7 +2,7 @@
 
 ## 対象期間
 
-- 2026-07-13 までの実装・検証内容
+- 2026-08-19 までの実装・検証内容
 
 ## 実装ハイライト
 
@@ -24,8 +24,8 @@
 
 ### 対応済み（リポジトリ反映）
 
-- 実カメラ互換性向上
-  - `v4l2src ! decodebin` を採用し、MJPEG/Raw系カメラのネゴシエーションを強化
+- 実カメラのJetson経路を安定化
+  - `v4l2src ! video/x-raw,width=1280,height=720,framerate=30/1` として delayed linking を回避
 - マルチステージコンテナ定義を追加
   - `Dockerfile.streamer`（build/runtime分離）
 - マルチアーキテクチャCIを追加
@@ -49,7 +49,7 @@
 ### 2. HLSプレビュー安定化
 
 - HLS配信設定を改善
-  - `hlssink max-files=10 playlist-length=5 target-duration=1`
+  - `hlssink max-files=6 playlist-length=3 target-duration=1`
 - Hls.js 再読込時に旧インスタンスを破棄して再生成
 - `manifestLoadError` 対応
   - HTTPルーティング時にクエリ文字列 (`?_t=...`) を除去してパス解決
@@ -87,6 +87,9 @@
 - `GET /hls/stream.m3u8` が 200 応答
 - `GET /hls/stream.m3u8?_t=...` も 200 応答を確認
 - WebUI 上で再生確認
+- Jetson TX2 (`192.168.11.238`) から WSL2 (`192.168.11.122`) への RTP/H264送信を確認
+- 実機条件: `/dev/video0`, 1280x720@30fps, H264, UDP port 5004
+- Win11ブラウザの `:8080` WebUI で映像確認、実測遅延は約3秒
 
 ## 既知の注意点
 
