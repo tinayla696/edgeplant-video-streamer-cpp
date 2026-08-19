@@ -303,7 +303,7 @@ std::string BuildWebUiPage() {
 
         function hlsCommandFromStatus(s) {
             const codec = s.codec === 'H265' ? 'H265' : 'H264';
-            const depay = codec === 'H265' ? 'rtph265depay ! h265parse' : 'rtph264depay ! h264parse config-interval=1';
+            const depay = codec === 'H265' ? 'rtph265depay ! h265parse config-interval=-1' : 'rtph264depay ! h264parse config-interval=1';
             const caps = 'application/x-rtp,media=video,encoding-name=' + codec + ',payload=96,clock-rate=90000';
             return [
                 'mkdir -p /tmp/edgeplant_hls',
@@ -324,10 +324,13 @@ std::string BuildWebUiPage() {
 
         function hlsHintFromStatus(s) {
             const codec = s.codec === 'H265' ? 'H265' : 'H264';
+            const codecWarn = codec === 'H265'
+                ? ' / H265はブラウザ環境によって再生非対応です。RTP直接再生で確認してください。'
+                : '';
             const modeWarn = s.mode === 'advanced'
                 ? ' / 高度設定では独自パイプラインがRTP(H26x/PT=96)でない場合、HLSプレビューできません。'
                 : '';
-            return '現在の配信Codec: ' + codec + ' (port=' + s.target_port + ')' + modeWarn;
+            return '現在の配信Codec: ' + codec + ' (port=' + s.target_port + ')' + codecWarn + modeWarn;
         }
 
         function renderStatus(s) {
